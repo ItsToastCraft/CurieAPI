@@ -30,26 +30,24 @@ import static net.timeworndevs.curieapi.util.CurieAPIConfig.*;
 public class RadiationCalculator {
 
     public static float calculateInventoryRadiation(RadiationType type, PlayerCache cache) {
-        float radiationFromItems = 0.0f;
+        RadiationEntry entry = RadiationEntry.createEmpty();
         // Search through inventory to find radioactive items.
         Map<Item, Integer> items = cache.createInventoryMap();
-
         if (cache.inventoryEquals(items)) {
-            radiationFromItems = cache.getPrevItemRadiation().get(type);
+            entry = cache.getPrevItemRadiation();
         } else {
-            for (Map.Entry<Item, Integer> entry: items.entrySet()) {
-                Item item = entry.getKey();
-                int count = entry.getValue();
-
-                if (ITEM_RADIATION_VALUES.containsKey(item)) {
-                    radiationFromItems += ITEM_RADIATION_VALUES.get(item).get(type) * count;
+            for (Map.Entry<Item, Integer> itemEntry : items.entrySet()) {
+                Item item = itemEntry.getKey();
+                RadiationEntry radiationEntry = ITEM_RADIATION_VALUES.get(item);
+                if (radiationEntry != null) {
+                    RadiationEntry finalEntry = entry;
+                    radiationEntry.entries().forEach((radiationType, value) -> finalEntry.add(radiationType, value * itemEntry.getValue()));
                 }
             }
-            radiationFromItems = Math.min(radiationFromItems, MAX_ITEM_INTAKE);
+            cache.setItemRadiation(entry);
             cache.updateInventory();
-            cache.setItemRadiation(type, radiationFromItems);
         }
-        return radiationFromItems;
+        return Math.min(entry.get(type), MAX_ITEM_INTAKE);
     }
     public static float calculateBiomeRadiation(ServerWorld world, ServerPlayerEntity player, RadiationType type, PlayerCache cache) {
         float biomeMultiplier = 0.0f;
@@ -64,7 +62,7 @@ public class RadiationCalculator {
                 biomeMultiplier = BIOME_RADIATION_VALUES.get(biomeID).get(type);
                 cache.setBiomeRadiation(type, biomeMultiplier);
             }
-            // If the player is in the overworld, also apply more radiation if exposed to light.
+            // If the player is in the overworld, also apply more radiation if exposed to skylight.
             if (world.getRegistryKey().equals(World.OVERWORLD)) {
                 biomeMultiplier = biomeMultiplier * (world.getLightLevel(LightType.SKY, player.getBlockPos()) / 15.0f);
             }
@@ -95,30 +93,25 @@ public class RadiationCalculator {
     // Checks if there are insulator blocks present between the player and the radioactive block.
     public static float calculateInsulators(ServerWorld world, ServerPlayerEntity player, RadiationType type, BlockPos blockPos) {
         float totalInsulation = 0.0f;
-        Vec3d start, end;
+        Vec3d start = player.getPos().add(0.0, 0.1, 0.0);
+        Vec3d end = blockPos.toCenterPos();
 
-        start = player.getPos().add(0.0, 0.1, 0.0);
-        end = blockPos.toCenterPos();
-
-        boolean reachedEnd = false;
         BlockPos lastBlockPos = null;
-        while (!reachedEnd) {
+        while (true) {
             BlockHitResult result = raycastInsulator(new RaycastContext(start, end, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, player), (blockState) -> INSULATORS.containsKey(blockState.getBlock()) && INSULATORS.get(blockState.getBlock()).containsKey(type), lastBlockPos, world);
             lastBlockPos = result.getBlockPos();
-            if (lastBlockPos.equals(blockPos)) {
-                reachedEnd = true;
-            } else {
-                RadiationEntry entry = INSULATORS.get(world.getBlockState(lastBlockPos).getBlock());
-                if (entry != null) {
-                    totalInsulation += entry.get(type);
-                }
-                start = result.getPos();
+            if (lastBlockPos.equals(blockPos)) break;
+
+            RadiationEntry entry = INSULATORS.get(world.getBlockState(lastBlockPos).getBlock());
+            if (entry != null) {
+                totalInsulation += entry.get(type);
             }
+            start = result.getPos();
         }
         return totalInsulation;
     }
 
-    // Calculates how many radioactive blocks are within a 11x11 box from the player.
+    // Calculates how many radioactive blocks are within an 11x11 box from the player.
     public static float calculateBlockRadiation(ServerWorld world, ServerPlayerEntity player, RadiationType type, PlayerCache cache) {
         float radiation = 0.0f;
         BlockPos corner1 = player.getBlockPos().add(-5, -5, -5);
@@ -145,19 +138,19 @@ public class RadiationCalculator {
 
         List<Item> armor = cache.createArmorMap();
         // Search through armor to find insulators.
-        if (cache.armorEquals(armor)) {
-            armorProtection = cache.getArmorInsulation().get(type);
-        } else {
+        if (!cache.armorEquals(armor)) {
+            RadiationEntry entry = RadiationEntry.createEmpty();
             for (Item item : armor) {
                 ArmorInsulator insulator = ArmorInsulator.findSetForItem(item);
                 // Checks if there is a valid insulator and if it can negate this type of radiation.
-                if (insulator != null && insulator.getRadiation(type) != 0) {
-                    armorProtection += insulator.getMultiplier(item) * insulator.getRadiation(type) * 100;
+                if (insulator != null) {
+                    insulator.radiations().entries().forEach((radiationType, value) -> entry.add(radiationType, value * insulator.getMultiplier(item) * 100));
+
                 }
             }
-            cache.updateArmor(armor, type, armorProtection);
+            cache.updateArmor(armor, entry);
         }
-
-        return Math.round((radiationAround + radiationFromItems + biomeMultiplier) * (100 - Math.min(armorProtection, 100))) / DIV_CONSTANT;
+        armorProtection = cache.getArmorInsulation().get(type);
+        return Math.round(((radiationAround + radiationFromItems + biomeMultiplier) * (100 - Math.min(armorProtection, 100))) / DIV_CONSTANT);
     }
 }

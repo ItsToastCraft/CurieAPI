@@ -9,7 +9,7 @@ import net.timeworndevs.curieapi.radiation.RadiationType;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static net.timeworndevs.curieapi.CurieAPI.cache;
+import static net.timeworndevs.curieapi.CurieAPI.CACHE;
 
 public class PlayerCache {
 
@@ -17,10 +17,10 @@ public class PlayerCache {
     private final PlayerEntity player;
     private Map<Item, Integer> inventory = new HashMap<>();
     private List<Item> armor;
-    private final RadiationEntry itemRadiation = RadiationEntry.createEmpty();
+    private RadiationEntry itemRadiation = RadiationEntry.createEmpty();
     private final RadiationEntry biomeRadiation = RadiationEntry.createEmpty();
     private final RadiationEntry blockRadiation = RadiationEntry.createEmpty();
-    private final RadiationEntry armorInsulation = RadiationEntry.createEmpty();
+    private RadiationEntry armorInsulation = RadiationEntry.createEmpty();
 
     public PlayerCache(PlayerEntity player) {
         this.player = player;
@@ -29,13 +29,13 @@ public class PlayerCache {
 
     public static PlayerCache get(PlayerEntity player) {
         UUID uuid = player.getUuid();
-        if (!cache.containsKey(uuid)) {
-            cache.put(uuid, new PlayerCache(player));
+        if (!CACHE.containsKey(uuid)) {
+            CACHE.put(uuid, new PlayerCache(player));
         }
-        return cache.get(uuid);
+        return CACHE.get(uuid);
     }
     public static void add(PlayerEntity player) {
-        cache.putIfAbsent(player.getUuid(), new PlayerCache(player));
+        CACHE.putIfAbsent(player.getUuid(), new PlayerCache(player));
     }
 
     public boolean inventoryEquals(Map<Item, Integer> other) {
@@ -54,8 +54,8 @@ public class PlayerCache {
         this.inventory = this.createInventoryMap();
     }
 
-    public void setItemRadiation(RadiationType type, float radiation) {
-        this.itemRadiation.put(type, radiation);
+    public void setItemRadiation(RadiationEntry entry) {
+        this.itemRadiation = entry;
     }
     public RadiationEntry getPrevItemRadiation() {
         return this.itemRadiation;
@@ -71,9 +71,9 @@ public class PlayerCache {
                 .map(ItemStack::getItem)
                 .toList();
     }
-    public void updateArmor(List<Item> armor, RadiationType type, float insulation) {
+    public void updateArmor(List<Item> armor, RadiationEntry entry) {
         this.armor = armor;
-        this.armorInsulation.put(type, insulation);
+        this.armorInsulation = entry;
     }
 
     public RadiationEntry getArmorInsulation() {

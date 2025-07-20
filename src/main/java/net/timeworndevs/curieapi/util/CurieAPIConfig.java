@@ -21,29 +21,30 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class CurieAPIConfig {
-    public static HashMap<String, RadiationType> RADIATION_TYPES = new HashMap<>();
-    public static HashMap<Block, RadiationEntry> BLOCK_RADIATION_VALUES = new HashMap<>();
-    public static HashMap<Item, RadiationEntry> ITEM_RADIATION_VALUES = new HashMap<>();
-    public static HashMap<String, RadiationEntry> BIOME_RADIATION_VALUES = new HashMap<>();
-    public static HashMap<Block, RadiationEntry> INSULATORS = new HashMap<>();
+    public static LinkedHashMap<String, RadiationType> RADIATION_TYPES = new LinkedHashMap<>();
+    public static Map<Block, RadiationEntry> BLOCK_RADIATION_VALUES = new HashMap<>();
+    public static Map<Item, RadiationEntry> ITEM_RADIATION_VALUES = new HashMap<>();
+    public static Map<String, RadiationEntry> BIOME_RADIATION_VALUES = new HashMap<>();
+    public static Map<Block, RadiationEntry> INSULATORS = new HashMap<>();
     public static ArrayList<ArmorInsulator> ARMOR_INSULATORS = new ArrayList<>();
     private static final int defaultCap = 100000;
     private static final int defaultDivConstant = 4;
     private static final int defaultMaxItemIntake = 100;
     private static final int defaultMaxBlockIntake = 100;
-    private static final int defaultPassiveDecay = 8;
+    private static final int[] defaultPassiveDecay = new int[]{1,8};
 
     public static int CAP = defaultCap;
     public static int DIV_CONSTANT = defaultDivConstant;
     public static int MAX_ITEM_INTAKE = defaultMaxItemIntake;
     public static int MAX_BLOCK_INTAKE = defaultMaxBlockIntake;
-    public static int PASSIVE_DECAY = defaultPassiveDecay;
+    public static int[] PASSIVE_DECAY = defaultPassiveDecay;
 
     private static final Map<String, Consumer<JsonElement>> configHandlers = Map.of(
             "radiation_types", CurieAPIConfig::addRadiationTypes,
@@ -91,7 +92,8 @@ public class CurieAPIConfig {
                             MAX_ITEM_INTAKE = json.get("max_item_intake").getAsInt();
                         }
                         if (json.has("passive_radiation_decay") && PASSIVE_DECAY == defaultPassiveDecay) {
-                            MAX_ITEM_INTAKE = json.get("passive_radiation_decay").getAsInt();
+                            JsonArray array = json.getAsJsonArray("passive_radiation_decay");
+                            PASSIVE_DECAY = new int[] {array.get(0).getAsInt(), array.get(1).getAsInt()};
                         }
 
                     } catch (IOException e) {
@@ -103,7 +105,7 @@ public class CurieAPIConfig {
         }
     }
 
-    // Adds new radiation types from the config.
+    // Adds new radiation LOADED_TYPES from the config.
     private static void addRadiationTypes(JsonElement json) {
         for (JsonElement element: json.getAsJsonArray()) {
             JsonObject object = element.getAsJsonObject();
@@ -177,13 +179,14 @@ public class CurieAPIConfig {
                 }
 
                 if (!armorValues.isEmpty()) {
-                    ArmorInsulator.register(armorValues, mapRadiationTypes(object.getAsJsonObject("radiation")));
+                    RadiationEntry entry = mapRadiationTypes(object.getAsJsonObject("radiation"));
+                    ArmorInsulator.register(armorValues, entry);
                 }
             }
         }
     }
 
-    // Creates a map of all the valid radiation types and their values to be used by the other methods.
+    // Creates a map of all the valid radiation LOADED_TYPES and their values to be used by the other methods.
     private static RadiationEntry mapRadiationTypes(JsonObject json) {
         return new RadiationEntry(json.keySet().stream()
                 .filter(type -> RadiationType.getRadiationType(type) != null)
